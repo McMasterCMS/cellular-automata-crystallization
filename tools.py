@@ -21,3 +21,7 @@ def display_growth(state_history, show_fraction=False):
         state_solid_fraction = state_solid_count / size
         ax2.plot(state_solid_fraction)
 
+# def display_growth_2D():
+
+
+
