@@ -52,15 +52,20 @@ def display_growth(state_history, show_fraction=False):
 def display_growth_2D(state_history):
     fig = plt.figure(figsize=(14,7))
     ax_instant = plt.subplot2grid((1,2),(0, 0))
-    ax_instant.imshow(np.sum(state_history, axis=0))
+    ax_instant.imshow(np.sum(state_history, axis=0), cmap=plt.get_cmap('Blues_r'))
+    ax_instant.set_xlabel("Nucleation and Growth of a Solid in Liquid", labelpad=20)
+    ax_instant.set_xticks([])
+    ax_instant.set_yticks([])
 
     size, _ = state_history[0].shape
     state_solid_count = np.array([np.sum(state) for state in state_history])
     state_solid_fraction = state_solid_count / size**2
     ax_phase_frac = plt.subplot2grid((1,2),(0, 1))
-    ax_phase_frac.plot(state_solid_fraction)
+    ax_phase_frac.plot(state_solid_fraction*100)
+    ax_phase_frac.set_xlabel("Simulation Steps")
+    ax_phase_frac.set_ylabel("Percentage of Solid")
 
-    fig.tight_layout()
+    fig.tight_layout(w_pad=2)
 
 
 
