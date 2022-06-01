@@ -6,11 +6,11 @@ from numpy import array
 from matplotlib.animation import FuncAnimation
 import copy
 from random import randrange
-from IPython.display import Image # For GIFs
 
 
 liq = 0
 sol = 1
+anim_size = (15, 9) # dimensions of animation
 
 
 def set_nucleation_sites(init_state, number_of_sites):
@@ -19,8 +19,10 @@ def set_nucleation_sites(init_state, number_of_sites):
 
     size_y, size_x = init_state.shape
     for i in range(number_of_sites):
-        rand_x = randrange(0, size_x)
-        rand_y = randrange(0, size_y)
+        # Don't allow sites to be on edges to reduce the number of
+        # edge case if-else statements in growth function
+        rand_x = randrange(1, size_x)
+        rand_y = randrange(1, size_y)
         init_state[rand_y, rand_x] = sol
 
     return init_state
@@ -45,6 +47,14 @@ def format_imshow(ax):
     plt.yticks([])
     plt.yticks([], minor=True)
 
+def format_line_plot(ax, n_frames):
+    ax.set_xlabel('Timestep', size=20)
+    ax.set_ylabel('Fraction Solidified', size=20)
+    ax.set_ylim([0, 1.05])
+    ax.set_xlim([0, n_frames])
+    ax.yaxis.set_label_position("right")
+    ax.yaxis.tick_right()
+
 
 def animate_growth(prev_states):
     """Animate simulation by showing three different graphics:
@@ -52,119 +62,113 @@ def animate_growth(prev_states):
     the state of the simulation with time as the vertical axis (2D image
     of cells), and extent of solification at a given timestep (a line
     of amount solidified vs. time). A gif of the animation is saved as
-    growth_anim.gif"""
-
-    divs=11
+    simulation_anim_1D.gif"""
 
     prev_states = np.array(prev_states)
-    fig = plt.figure(figsize=(14,7))
+    fig = plt.figure(figsize=anim_size)
 
-    ax_instant = plt.subplot2grid((divs,2),(0, 0))
-    format_imshow(ax_instant)
-    state_img = prev_states[0][np.newaxis]
-    img_instant = ax_instant.imshow(state_img, aspect='equal')
+    divs=11 # number of vertical partitions for graphics
+    n_frames, _ = prev_states.shape # Number of animation frames
 
-    blank_img = np.zeros_like(prev_states)
-    frames = []
-    n_timesteps, _ = prev_states.shape
-    for i in range(n_timesteps):
-        blank_img[i] = prev_states[i]
-        frames.append(copy.deepcopy(blank_img))
+    # Simulation at an instant animation initialization
+    ax_sim_1D = plt.subplot2grid((divs,2),(0, 0))
+    format_imshow(ax_sim_1D)
+    sim_1D_frame_init = prev_states[0][np.newaxis]
+    sim_1D_img = ax_sim_1D.imshow(sim_1D_frame_init,
+                                  aspect='equal',
+                                  animated=True,
+                                  vmin=0,
+                                  vmax=n_frames//10+1)
 
-    ax_overall = plt.subplot2grid((divs,2),(1, 0), rowspan=divs-1)
-    format_imshow(ax_overall)
-    img_overall = ax_overall.imshow(frames[0], aspect='auto')
+    # Overall simulation as a 2D plot of states (horizontal) and time
+    # (vertical)
 
+    # prev_states is a 2D image where every row is the next timestep
+    # in the simulation, i.e. a static image showing how the simulation
+    # progressed. To animate, a semi-empty image is created for each
+    # frame in the animation. Rows are progressivley copied from
+    # prev_state to make a collection of frames that 'reveal' the
+    # simulation as the animation runs
+    sim_2D_frames = []
+    sim_2D_frame_empty = np.zeros_like(prev_states)
+    for i in range(n_frames):
+        sim_2D_frame_empty[i] = prev_states[i]
+        sim_2D_frames.append(copy.deepcopy(sim_2D_frame_empty))
+        
+
+    ax_sim_2D = plt.subplot2grid((divs,2),(1, 0), rowspan=divs-1)
+    format_imshow(ax_sim_2D)
+    sim_2D_frame_init = sim_2D_frames[0]
+    # sim_2D_img = ax_sim_2D.imshow(sim_2D_frame_init, aspect='auto')
+    sim_2D_img = ax_sim_2D.imshow(sim_2D_frame_init, animated=True,
+                                  vmin=0, vmax=n_frames//10+1)
+
+    # Create line plot of the amount solidified
     size = len(prev_states[0])
-    state_solid_count = np.sum(array(prev_states), axis=1)
-    state_solid_fraction = state_solid_count / size
+    state_sol_count = np.sum(array(prev_states), axis=1)
+    state_sol_fraction = state_sol_count / size
 
-    ax_phase_frac = plt.subplot2grid((divs,2),(0, 1), rowspan=divs)
-    ax_phase_frac.set_xlim([0, n_timesteps])
-    line_phase_frac, = ax_phase_frac.plot([],[])
-    ax_phase_frac.set_xlabel('Timestep')
-    ax_phase_frac.set_ylabel('Fraction Solified')
-    ax_phase_frac.set_ylim([0, 1.05])
+    ax_sol_frac = plt.subplot2grid((divs,2),(0, 1), rowspan=divs)
+    sol_frac_line, = ax_sol_frac.plot([],[])
+    format_line_plot(ax_sol_frac, n_frames)
 
     fig.tight_layout()
 
     def draw_frame(frame_num):
-        img_instant.set_array(prev_states[frame_num][np.newaxis])
-        img_overall.set_array(frames[frame_num])
-        line_phase_frac.set_data(list(range(frame_num)), state_solid_fraction[:frame_num])
+        """Guides how animation is drawn based on the frame number"""
+        # sim_1D_img.set_array(prev_states[frame_num][np.newaxis])
+        sim_1D_img.set_array(np.sum(prev_states[:frame_num][np.newaxis], axis=1))
+        # sim_2D_img.set_array(sim_2D_frames[frame_num])
+        sim_2D_img.set_array(np.sum(np.array(sim_2D_frames)[:frame_num], axis=0))
+        sol_frac_line.set_data(list(range(frame_num)), 
+                               state_sol_fraction[:frame_num])
 
-        return img_instant, img_overall
-
+    # Create animation and save
     ani = FuncAnimation(fig, draw_frame, interval=10)
-    ani.save('growth_anim.gif')
+    ani.save('simulation_anim_1D.gif')
     plt.close()
 
 
 def animate_growth_2D(prev_states):
+    """Animate simulation by showing 2 different graphics: 1. the state
+    of the simulation at an instant (2D image) where the lighter the
+    shade the blue the 'older' the point of soldification and 2.
+    the extent of solification at a given timestep (a line of amount
+    solidified vs. time). A gif of the animation is saved as
+    simulation_anim_2D.gif"""
 
     prev_states = np.array(prev_states)
-    fig = plt.figure(figsize=(15,7))
+    fig = plt.figure(figsize=anim_size)
 
-    ax_overall = plt.subplot2grid((1,2),(0, 0))
-    img_overall = ax_overall.imshow(prev_states[0], animated=True, cmap=plt.get_cmap('Blues_r'), vmin=0, vmax=prev_states.shape[0])
-    ax_overall.axis('off')
+    n_frames, _, _ = prev_states.shape
 
-    ax_phase_frac = plt.subplot2grid((1,2),(0, 1))
-    ax_phase_frac.set_aspect('auto')
+    ax_sim_2D = plt.subplot2grid((1,2),(0, 0))
+    format_imshow(ax_sim_2D)
+    sim_2D_img = ax_sim_2D.imshow(prev_states[0], animated=True,
+                                  vmin=0, vmax=n_frames)
+
+    ax_sol_frac = plt.subplot2grid((1,2),(0, 1))
+    ax_sol_frac.set_aspect('auto')
     size = prev_states[0].size
     state_solid_count = np.array([np.sum(i) for i in prev_states])
     state_solid_fraction = state_solid_count / size
 
-    # n_timesteps, _, _ = state_history.shape
-    # ax_phase_frac = plt.subplot2grid((1,2),(0, 0), rowspan=2, colspan=1)
-    # ax_phase_frac.set_ylim([0,1])
-    # ax_phase_frac.set_xlim([0,n_timesteps])
-    # ax_phase_frac.tick_params(
-    #     axis='both',          # changes apply to the x-axis
-    #     which='both',      # both major and minor ticks are affected
-    #     bottom=False,      # ticks along the bottom edge are off
-    #     top=False,         # ticks along the top edge are off
-    #     labelbottom=False,
-    #     left=False,
-    #     right=False,
-    #     labelleft=False) # labels along the bottom edge are off
-    ax_phase_frac.set_ylabel('Amount Solidified', size=20)
-    ax_phase_frac.set_xlabel('Time', size=20)
-    line_phase_frac, = ax_phase_frac.plot([],[])
-    ax_phase_frac.set_ylim([0, 1.05])
-    ax_phase_frac.set_xlim([0, prev_states.shape[0]])
+    sol_frac_line, = ax_sol_frac.plot([],[])
+    format_line_plot(ax_sol_frac, n_frames)
 
     fig.tight_layout()
 
     def draw_frame(frame_num):
-        img_overall.set_array(np.sum(prev_states[:frame_num], axis=0))
-        line_phase_frac.set_data(list(range(frame_num)), state_solid_fraction[:frame_num])
+        sim_2D_img.set_array(np.sum(prev_states[:frame_num], axis=0))
+        sol_frac_line.set_data(list(range(frame_num)), state_solid_fraction[:frame_num])
 
 
     ani = FuncAnimation(fig, draw_frame, interval=10, frames=prev_states.shape[0])
-    ani.save('test_anim_2D_1.gif')
+    ani.save('simulation_anim_2D.gif')
     plt.close()
 
 
 if __name__ == "__main__":
-
-    def simulate_growth_2D(size):
-
-        state = np.zeros((size, size))
-        state = set_nucleation_sites(state, 100)
-        # Copy state to keep track of history
-        temp_state = copy.deepcopy(state)
-        prev_states = []
-        # Loop over each cell
-        while np.sum(state) < size*size:
-            for x in range(size):
-                for y in range(size):
-                    if state[y,x] == sol:
-                            temp_state[y-1:y+2, x-1:x+2] = sol
-
-            state = copy.deepcopy(temp_state)
-            prev_states.append(copy.deepcopy(temp_state))
-        return prev_states
 
     def simulate_growth(size):
         state = [liq] * size
@@ -187,5 +191,26 @@ if __name__ == "__main__":
             prev_states.append(state)
         return prev_states
 
-    prev_states = simulate_growth_2D(200)
-    animate_growth_2D(prev_states)
+    def simulate_growth_2D(size):
+
+        state = np.zeros((size, size))
+        state = set_nucleation_sites(state, 100)
+        # Copy state to keep track of history
+        temp_state = copy.deepcopy(state)
+        prev_states = []
+        # Loop over each cell
+        while np.sum(state) < size*size:
+            for x in range(size):
+                for y in range(size):
+                    if state[y,x] == sol:
+                        temp_state[y-1:y+2, x-1:x+2] = sol
+
+            state = copy.deepcopy(temp_state)
+            prev_states.append(copy.deepcopy(temp_state))
+        return prev_states
+
+    # prev_states = simulate_growth_2D(200)
+    # animate_growth_2D(prev_states)
+
+    prev_states = simulate_growth(100)
+    animate_growth(prev_states)
