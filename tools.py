@@ -1,16 +1,14 @@
-import warnings
-warnings.filterwarnings("ignore")
-import matplotlib.pyplot as plt
 import numpy as np
-from numpy import array
-from matplotlib.animation import FuncAnimation
 import copy
 from random import randrange
+import matplotlib.pyplot as plt
+from matplotlib import ticker
+from matplotlib.animation import FuncAnimation
+plt.style.use(['dark_background'])
 
 
-liq = 0
-sol = 1
 anim_size = (15, 9) # dimensions of animation
+fps = 2
 
 
 def set_nucleation_sites(init_state, number_of_sites):
@@ -47,30 +45,46 @@ def format_imshow(ax):
     plt.yticks([])
     plt.yticks([], minor=True)
 
+
 def format_line_plot(ax, n_frames):
+    """Formats % soldification line plot"""
+
     ax.set_xlabel('Timestep', size=20)
-    ax.set_ylabel('Fraction Solidified', size=20)
+    ax.set_ylabel('% Solid', size=20)
     ax.set_ylim([0, 1.05])
     ax.set_xlim([0, n_frames])
     ax.yaxis.set_label_position("right")
     ax.yaxis.tick_right()
+    formatter = ticker.PercentFormatter(xmax=1)
+    ax.yaxis.set_major_formatter(formatter)
 
 
-def animate_growth(prev_states):
+def animate_growth(prev_states, col_grad=False):
     """Animate simulation by showing three different graphics:
     the state of the simulation at an instant (i.e. 1D row of cells),
     the state of the simulation with time as the vertical axis (2D image
     of cells), and extent of solification at a given timestep (a line
     of amount solidified vs. time). A gif of the animation is saved as
-    simulation_anim_1D.gif"""
+    simulation_anim_1D.gif.
+
+    Parameters
+    ----------
+    prev_states : list
+        Nested list of shape (m, n) where m is the number of simulation
+        timesteps/frame and n is the number of simulation cells
+    col_grad : bool, optional
+        Use a color gradient when making animation, by default False
+    """
 
     prev_states = np.array(prev_states)
     fig = plt.figure(figsize=anim_size)
 
     divs=11 # number of vertical partitions for graphics
     n_frames, _ = prev_states.shape # Number of animation frames
+    if col_grad: vmax=n_frames//10+1
+    else: vmax=None
 
-    # Simulation at an instant animation initialization
+    # Simulation at an instant - initializing animation
     ax_sim_1D = plt.subplot2grid((divs,2),(0, 0))
     format_imshow(ax_sim_1D)
     sim_1D_frame_init = prev_states[0][np.newaxis]
@@ -78,7 +92,7 @@ def animate_growth(prev_states):
                                   aspect='equal',
                                   animated=True,
                                   vmin=0,
-                                  vmax=n_frames//10+1)
+                                  vmax=vmax)
 
     # Overall simulation as a 2D plot of states (horizontal) and time
     # (vertical)
@@ -101,11 +115,11 @@ def animate_growth(prev_states):
     sim_2D_frame_init = sim_2D_frames[0]
     # sim_2D_img = ax_sim_2D.imshow(sim_2D_frame_init, aspect='auto')
     sim_2D_img = ax_sim_2D.imshow(sim_2D_frame_init, animated=True,
-                                  vmin=0, vmax=n_frames//10+1)
+                                  vmin=0, vmax=vmax)
 
     # Create line plot of the amount solidified
     size = len(prev_states[0])
-    state_sol_count = np.sum(array(prev_states), axis=1)
+    state_sol_count = np.sum(np.array(prev_states), axis=1)
     state_sol_fraction = state_sol_count / size
 
     ax_sol_frac = plt.subplot2grid((divs,2),(0, 1), rowspan=divs)
@@ -114,61 +128,91 @@ def animate_growth(prev_states):
 
     fig.tight_layout()
 
-    def draw_frame(frame_num):
-        """Guides how animation is drawn based on the frame number"""
-        # sim_1D_img.set_array(prev_states[frame_num][np.newaxis])
-        sim_1D_img.set_array(np.sum(prev_states[:frame_num][np.newaxis], axis=1))
-        # sim_2D_img.set_array(sim_2D_frames[frame_num])
-        sim_2D_img.set_array(np.sum(np.array(sim_2D_frames)[:frame_num], axis=0))
+    def draw_frame(frame_num, col_grad=False):
+        """Guides how animation is drawn based on the frame number.
+        col_grad indicates whether a color gradient is used to the
+        animation of the solidification"""
+
+        if col_grad:
+            sim_1D_img.set_array(np.sum(prev_states[:frame_num][np.newaxis], axis=1))
+            sim_2D_img.set_array(np.sum(np.array(sim_2D_frames)[:frame_num], axis=0))
+        else:
+            sim_1D_img.set_array(prev_states[frame_num][np.newaxis])
+            sim_2D_img.set_array(sim_2D_frames[frame_num])
+
         sol_frac_line.set_data(list(range(frame_num)), 
                                state_sol_fraction[:frame_num])
 
     # Create animation and save
-    ani = FuncAnimation(fig, draw_frame, interval=10)
+    ani = FuncAnimation(fig, draw_frame, interval=n_frames/fps)
     ani.save('simulation_anim_1D.gif')
     plt.close()
 
 
-def animate_growth_2D(prev_states):
+def animate_growth_2D(prev_states, col_grad=False):
     """Animate simulation by showing 2 different graphics: 1. the state
     of the simulation at an instant (2D image) where the lighter the
     shade the blue the 'older' the point of soldification and 2.
     the extent of solification at a given timestep (a line of amount
     solidified vs. time). A gif of the animation is saved as
-    simulation_anim_2D.gif"""
+    simulation_anim_2D.gif
+
+    Parameters
+    ----------
+    prev_states : list
+        List m arrays of shape (n, o)
+    col_grad : bool, optional
+        Use a color gradient when making animation, by default False
+    """
 
     prev_states = np.array(prev_states)
     fig = plt.figure(figsize=anim_size)
 
     n_frames, _, _ = prev_states.shape
+    if col_grad: vmax=n_frames//10+1
+    else: vmax=None 
 
+    # Simulation at in instant - initializing animation
     ax_sim_2D = plt.subplot2grid((1,2),(0, 0))
     format_imshow(ax_sim_2D)
     sim_2D_img = ax_sim_2D.imshow(prev_states[0], animated=True,
-                                  vmin=0, vmax=n_frames)
+                                  vmin=0, vmax=vmax)
 
-    ax_sol_frac = plt.subplot2grid((1,2),(0, 1))
-    ax_sol_frac.set_aspect('auto')
+    # Create line plot of amount solidified
     size = prev_states[0].size
     state_solid_count = np.array([np.sum(i) for i in prev_states])
     state_solid_fraction = state_solid_count / size
 
+    ax_sol_frac = plt.subplot2grid((1,2),(0, 1))
     sol_frac_line, = ax_sol_frac.plot([],[])
     format_line_plot(ax_sol_frac, n_frames)
 
     fig.tight_layout()
 
-    def draw_frame(frame_num):
-        sim_2D_img.set_array(np.sum(prev_states[:frame_num], axis=0))
-        sol_frac_line.set_data(list(range(frame_num)), state_solid_fraction[:frame_num])
+    def draw_frame(frame_num, col_grad=False):
+        """Guides how animation is drawn based on the frame number.
+        col_grad indicates whether a color gradient is used to the
+        animation of the solidification"""
 
+        if col_grad:
+            sim_2D_img.set_array(np.sum(prev_states[:frame_num], axis=0))
+        else:
+            sim_2D_img.set_array(prev_states[frame_num])
 
-    ani = FuncAnimation(fig, draw_frame, interval=10, frames=prev_states.shape[0])
+        sol_frac_line.set_data(list(range(frame_num)),
+                               state_solid_fraction[:frame_num])
+
+    # Create animation and save
+    ani = FuncAnimation(fig, draw_frame, interval=n_frames/fps,
+                        frames=prev_states.shape[0])
     ani.save('simulation_anim_2D.gif')
     plt.close()
 
 
 if __name__ == "__main__":
+
+    liq = 0
+    sol = 1
 
     def simulate_growth(size):
         state = [liq] * size
@@ -192,7 +236,6 @@ if __name__ == "__main__":
         return prev_states
 
     def simulate_growth_2D(size):
-
         state = np.zeros((size, size))
         state = set_nucleation_sites(state, 100)
         # Copy state to keep track of history
@@ -209,8 +252,8 @@ if __name__ == "__main__":
             prev_states.append(copy.deepcopy(temp_state))
         return prev_states
 
-    # prev_states = simulate_growth_2D(200)
-    # animate_growth_2D(prev_states)
+    prev_states = simulate_growth_2D(200)
+    animate_growth_2D(prev_states)
 
     prev_states = simulate_growth(100)
     animate_growth(prev_states)
